@@ -394,6 +394,13 @@ body, html {
     font-size: 0.9rem;
 }
 
+.hidden {
+    display: none !important;
+    pointer-events: none !important;
+    opacity: 0 !important;
+    visibility: hidden !important;
+}
+
 /* ===== SCREEN OVERLAYS (MENUS & END SCREENS) ===== */
 .screen-overlay {
     position: absolute;

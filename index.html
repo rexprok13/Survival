@@ -26,7 +26,7 @@
         <!-- Banner de Objetivo Inicial -->
         <div id="objective-banner">
             <div class="obj-header">📋 MISIÓN INICIAL</div>
-            <div class="obj-text">1. Explora la oscuridad y encuentra la <strong>Llave Dorada 🔑</strong>.<br>2. Ocultate en los armarios <strong>[E]</strong> si la Bestia te acecha.<br>3. Escapa por el <strong>Portal Dorada</strong>.</div>
+            <div class="obj-text">1. Explora la oscuridad y encuentra la <strong>Llave Dorada 🔑</strong>.<br>2. Evita la mirada directa de la Bestia.<br>3. Escapa por la <strong>Puerta de Salida de Roble</strong>.</div>
         </div>
 
         <!-- Minimapa Arriba a la Derecha -->
@@ -75,22 +75,6 @@
             <div class="heart-pulse"></div>
             <span id="danger-text">PELIGRO</span>
         </div>
-
-        <!-- Overlay de Armario (Vista mejorada a través de las rejillas) -->
-        <div id="locker-overlay" class="hidden">
-            <div class="locker-frame">
-                <div class="slits-container">
-                    <div class="slit-gap"></div>
-                    <div class="slit-gap"></div>
-                    <div class="slit-gap"></div>
-                    <div class="slit-gap"></div>
-                    <div class="slit-gap"></div>
-                </div>
-            </div>
-            <div id="hiding-prompt">
-                <span class="key-badge">E</span> Salir del armario
-            </div>
-        </div>
     </div>
 
     <!-- Menú Principal -->
@@ -111,12 +95,12 @@
                     <div class="control-item"><kbd>Ratón</kbd> Mirar alrededor</div>
                     <div class="control-item"><kbd>Shift</kbd> Correr</div>
                     <div class="control-item"><kbd>F</kbd> Encender/Apagar Linterna</div>
-                    <div class="control-item"><kbd>E</kbd> Entrar / Salir de Armarios</div>
+                    <div class="control-item"><kbd>E</kbd> Recoger Llave / Abrir Puerta</div>
                     <div class="control-item"><kbd>ESC</kbd> Pausar Juego</div>
                 </div>
             </div>
 
-            <button id="btn-start" class="primary-btn">COMENZAR LA ESCAPADA</button>
+            <button id="btn-start" class="primary-btn" onclick="startGame()">COMENZAR LA ESCAPADA</button>
         </div>
     </div>
 
