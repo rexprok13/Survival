@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Dark Labyrinth - Juego 3D de Terror</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Creepster&family=Orbitron:wght@400;700;900&family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Canvas 3D -->
+    <div id="canvas-container"></div>
+
+    <!-- Lightning & Blood Overlays -->
+    <div id="lightning-flash" class="hidden"></div>
+    <div id="blood-vignette" class="hidden"></div>
+    <div id="danger-vignette"></div>
+
+    <!-- HUD Overlay -->
+    <div id="hud" class="hidden">
+        <!-- Retículo / Crosshair -->
+        <div id="crosshair"></div>
+
+        <!-- Banner de Objetivo Inicial -->
+        <div id="objective-banner">
+            <div class="obj-header">📋 MISIÓN INICIAL</div>
+            <div class="obj-text">1. Explora la oscuridad y encuentra la <strong>Llave Dorada 🔑</strong>.<br>2. Ocultate en los armarios <strong>[E]</strong> si la Bestia te acecha.<br>3. Escapa por el <strong>Portal Dorada</strong>.</div>
+        </div>
+
+        <!-- Minimapa Arriba a la Derecha -->
+        <div id="minimap-card">
+            <canvas id="minimap-canvas" width="150" height="150"></canvas>
+            <div class="minimap-label">RADAR DE SECTOR</div>
+        </div>
+
+        <!-- Indicador de interacción (Armarios, Llave, Puerta) -->
+        <div id="interaction-prompt">
+            <span class="key-badge">E</span>
+            <span id="interaction-text">Ocultarse en el armario</span>
+        </div>
+
+        <!-- Estado de Objetivos y Linterna -->
+        <div id="status-bar">
+            <div class="hud-card key-card" id="key-status">
+                <div class="hud-icon key-icon">🔑</div>
+                <div class="hud-info">
+                    <span class="hud-label">LLAVE MAESTRA</span>
+                    <span id="key-text" class="hud-value status-missing">NO ENCONTRADA</span>
+                </div>
+            </div>
+
+            <div class="hud-card flashlight-card" id="flashlight-toggle-btn" title="Haz clic o presiona F para encender/apagar">
+                <div class="hud-icon">🔦</div>
+                <div class="hud-info">
+                    <span class="hud-label">LINTERNA (TECLA F)</span>
+                    <span id="flashlight-status-text" class="hud-value status-found">ENCENDIDA [F]</span>
+                </div>
+            </div>
+
+            <div class="hud-card stamina-card">
+                <div class="hud-icon">⚡</div>
+                <div class="hud-info">
+                    <span class="hud-label">RESISTENCIA (SHIFT)</span>
+                    <div class="stamina-bar-container">
+                        <div id="stamina-bar" style="width: 100%;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Indicador de Peligro / Latidos -->
+        <div id="heartbeat-indicator">
+            <div class="heart-pulse"></div>
+            <span id="danger-text">PELIGRO</span>
+        </div>
+
+        <!-- Overlay de Armario (Vista mejorada a través de las rejillas) -->
+        <div id="locker-overlay" class="hidden">
+            <div class="locker-frame">
+                <div class="slits-container">
+                    <div class="slit-gap"></div>
+                    <div class="slit-gap"></div>
+                    <div class="slit-gap"></div>
+                    <div class="slit-gap"></div>
+                    <div class="slit-gap"></div>
+                </div>
+            </div>
+            <div id="hiding-prompt">
+                <span class="key-badge">E</span> Salir del armario
+            </div>
+        </div>
+    </div>
+
+    <!-- Menú Principal -->
+    <div id="start-menu" class="screen-overlay">
+        <div class="menu-container">
+            <h1 class="game-title">THE DARK LABYRINTH</h1>
+            <p class="game-subtitle">Escape del Laberinto y la Bestia</p>
+
+            <div class="lore-box">
+                <p>Estás atrapado en un enorme laberinto ancestral envuelto en la oscuridad. Una criatura despiadada patrulla los pasillos buscando intrusos.</p>
+                <p><strong>Tu objetivo:</strong> Encuentra la <span>Llave Dorada 🔑</span> para desbloquear la Puerta de Salida de Roble y escapar con vida.</p>
+            </div>
+
+            <div class="controls-guide">
+                <h3>CONTROLES</h3>
+                <div class="controls-grid">
+                    <div class="control-item"><kbd>W A S D</kbd> Moverse</div>
+                    <div class="control-item"><kbd>Ratón</kbd> Mirar alrededor</div>
+                    <div class="control-item"><kbd>Shift</kbd> Correr</div>
+                    <div class="control-item"><kbd>F</kbd> Encender/Apagar Linterna</div>
+                    <div class="control-item"><kbd>E</kbd> Entrar / Salir de Armarios</div>
+                    <div class="control-item"><kbd>ESC</kbd> Pausar Juego</div>
+                </div>
+            </div>
+
+            <button id="btn-start" class="primary-btn">COMENZAR LA ESCAPADA</button>
+        </div>
+    </div>
+
+    <!-- Menú de Pausa -->
+    <div id="pause-menu" class="screen-overlay hidden">
+        <div class="menu-container compact">
+            <h2 class="menu-heading">JUEGO PAUSADO</h2>
+            <div class="menu-actions">
+                <button id="btn-resume" class="primary-btn">REANUDAR</button>
+                <button id="btn-restart-pause" class="secondary-btn">REINICIAR LABERINTO</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pantalla de Game Over -->
+    <div id="game-over-screen" class="screen-overlay hidden horror-bg">
+        <div class="menu-container text-center">
+            <h1 class="jumpscare-title">LA BESTIA TE HA CAPTURADO</h1>
+            <p class="death-quote">No pudiste encontrar la salida a tiempo...</p>
+            <button id="btn-retry" class="primary-btn pulse-btn">INTENTAR DE NUEVO</button>
+        </div>
+    </div>
+
+    <!-- Pantalla de Victoria -->
+    <div id="victory-screen" class="screen-overlay hidden victory-bg">
+        <div class="menu-container text-center">
+            <h1 class="victory-title">¡HAS ESCAPADO!</h1>
+            <p class="victory-quote">Encontraste la llave y lograste salir del laberinto con vida.</p>
+            <div class="stats-box">
+                <p>Tiempo de escape: <span id="stat-time">00:00</span></p>
+            </div>
+            <button id="btn-play-again" class="primary-btn">JUGAR DE NUEVO (NUEVO LABERINTO)</button>
+        </div>
+    </div>
+
+    <!-- Script de Three.js desde CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="game.js"></script>
+</body>
+</html>
