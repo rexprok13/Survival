@@ -1,6 +1,6 @@
 /**
  * THE DARK LABYRINTH - 3D Horror Survival Game
- * Removed Monster Beacon from Minimap Radar
+ * Cross-Platform Engine with Desktop & Mobile/Tablet Virtual Touch Controls
  */
 
 // Global State & Settings
@@ -19,6 +19,7 @@ let mazeGrid = [];
 const MAZE_SIZE = 25;
 const CELL_SIZE = 5;
 const WALL_HEIGHT = 4.5;
+let isMobile = false;
 
 // Scene, Camera, Renderer
 let scene, camera, renderer;
@@ -60,6 +61,12 @@ let deathTimer = 0;
 let deathPhase = 0;
 let cinematicTimer = 0;
 
+// Touch State
+let joystickTouchId = null;
+let joystickCenter = { x: 0, y: 0 };
+let lookTouchId = null;
+let lastLookPos = { x: 0, y: 0 };
+
 // Monster AI Properties with Dynamic BFS Pathfinding
 const monsterAI = {
     mesh: null,
@@ -94,15 +101,24 @@ let ambientGain = null;
 
 /* ===== INITIALIZATION ===== */
 window.addEventListener('DOMContentLoaded', () => {
+    detectDevice();
     initUIElements();
     initThreeJS();
     initMinimap();
     initEventListeners();
+    if (isMobile) initTouchControls();
 });
 
 window.startGame = startGame;
 window.resumeGame = resumeGame;
 window.toggleFlashlight = toggleFlashlight;
+
+function detectDevice() {
+    isMobile = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0) || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    if (isMobile) {
+        document.body.classList.add('is-mobile');
+    }
+}
 
 function initUIElements() {
     ui = {
@@ -124,7 +140,8 @@ function initUIElements() {
         dangerVignette: document.getElementById('danger-vignette'),
         bloodVignette: document.getElementById('blood-vignette'),
         lightningFlash: document.getElementById('lightning-flash'),
-        statTime: document.getElementById('stat-time')
+        statTime: document.getElementById('stat-time'),
+        touchControls: document.getElementById('touch-controls')
     };
 }
 
@@ -167,6 +184,133 @@ function initMinimap() {
     if (minimapCanvas) {
         minimapCtx = minimapCanvas.getContext('2d');
     }
+}
+
+/* ===== MOBILE / TABLET TOUCH CONTROLS (JOYSTICK, DRAG LOOK & BUTTONS) ===== */
+function initTouchControls() {
+    const joystickContainer = document.getElementById('joystick-container');
+    const joystickKnob = document.getElementById('joystick-knob');
+    if (!joystickContainer || !joystickKnob) return;
+
+    joystickContainer.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        const touch = e.changedTouches[0];
+        joystickTouchId = touch.identifier;
+        const rect = joystickContainer.getBoundingClientRect();
+        joystickCenter = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+        updateJoystick(touch.clientX, touch.clientY);
+    }, { passive: false });
+
+    window.addEventListener('touchmove', (e) => {
+        for (let i = 0; i < e.changedTouches.length; i++) {
+            const touch = e.changedTouches[i];
+            if (touch.identifier === joystickTouchId) {
+                e.preventDefault();
+                updateJoystick(touch.clientX, touch.clientY);
+            } else if (touch.identifier === lookTouchId && currentState === GAME_STATE.PLAYING) {
+                const deltaX = touch.clientX - lastLookPos.x;
+                const deltaY = touch.clientY - lastLookPos.y;
+                lastLookPos = { x: touch.clientX, y: touch.clientY };
+
+                const sensitivity = 0.004;
+                player.rotation.yaw -= deltaX * sensitivity;
+                player.rotation.pitch -= deltaY * sensitivity;
+                player.rotation.pitch = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, player.rotation.pitch));
+                updateCameraRotation();
+            }
+        }
+    }, { passive: false });
+
+    window.addEventListener('touchend', (e) => {
+        for (let i = 0; i < e.changedTouches.length; i++) {
+            const touch = e.changedTouches[i];
+            if (touch.identifier === joystickTouchId) {
+                joystickTouchId = null;
+                resetJoystick();
+            } else if (touch.identifier === lookTouchId) {
+                lookTouchId = null;
+            }
+        }
+    });
+
+    // Touch Swipe-to-Turn Look Area (Right 2/3 of screen)
+    window.addEventListener('touchstart', (e) => {
+        if (currentState !== GAME_STATE.PLAYING) return;
+        for (let i = 0; i < e.changedTouches.length; i++) {
+            const touch = e.changedTouches[i];
+            if (touch.clientX > window.innerWidth / 3 && lookTouchId === null) {
+                const targetEl = e.target;
+                if (!targetEl.closest('#touch-action-buttons') && !targetEl.closest('#hud-card')) {
+                    lookTouchId = touch.identifier;
+                    lastLookPos = { x: touch.clientX, y: touch.clientY };
+                }
+            }
+        }
+    }, { passive: false });
+
+    // Touch Action Buttons
+    const sprintBtn = document.getElementById('touch-sprint-btn');
+    if (sprintBtn) {
+        sprintBtn.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            keys.shift = true;
+            sprintBtn.classList.add('active');
+        }, { passive: false });
+        sprintBtn.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            keys.shift = false;
+            sprintBtn.classList.remove('active');
+        }, { passive: false });
+    }
+
+    const flashlightBtn = document.getElementById('touch-flashlight-btn');
+    if (flashlightBtn) {
+        flashlightBtn.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            toggleFlashlight();
+        }, { passive: false });
+    }
+
+    const interactBtn = document.getElementById('touch-interact-btn');
+    if (interactBtn) {
+        interactBtn.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            interact();
+        }, { passive: false });
+    }
+}
+
+function updateJoystick(clientX, clientY) {
+    const maxRadius = 45;
+    let dx = clientX - joystickCenter.x;
+    let dy = clientY - joystickCenter.y;
+    const dist = Math.hypot(dx, dy);
+
+    if (dist > maxRadius) {
+        dx = (dx / dist) * maxRadius;
+        dy = (dy / dist) * maxRadius;
+    }
+
+    const knob = document.getElementById('joystick-knob');
+    if (knob) knob.style.transform = `translate(${dx}px, ${dy}px)`;
+
+    const normX = dx / maxRadius;
+    const normY = dy / maxRadius;
+    const threshold = 0.25;
+
+    keys.w = normY < -threshold;
+    keys.s = normY > threshold;
+    keys.a = normX < -threshold;
+    keys.d = normX > threshold;
+}
+
+function resetJoystick() {
+    const knob = document.getElementById('joystick-knob');
+    if (knob) knob.style.transform = `translate(0px, 0px)`;
+    keys.w = false;
+    keys.s = false;
+    keys.a = false;
+    keys.d = false;
 }
 
 /* ===== REALISTIC YELLOW FLASHLIGHT ===== */
@@ -481,7 +625,6 @@ function buildMazeWorld() {
 function buildCozyEndingHouse(hx, hz) {
     houseGroup = new THREE.Group();
 
-    // Grass Lawn Front Yard
     const grassGeo = new THREE.PlaneGeometry(80, 80);
     const grassMat = new THREE.MeshStandardMaterial({ color: 0x0e2415, roughness: 0.95 });
     const grass = new THREE.Mesh(grassGeo, grassMat);
@@ -498,20 +641,17 @@ function buildCozyEndingHouse(hx, hz) {
     const floorMat = new THREE.MeshStandardMaterial({ map: woodTex, roughness: 0.35, metalness: 0.1 });
     const ceilingMat = new THREE.MeshStandardMaterial({ color: 0xeeeeee, roughness: 0.9 });
 
-    // House Wooden Floor
     const houseFloor = new THREE.Mesh(new THREE.PlaneGeometry(12, 16), floorMat);
     houseFloor.rotation.x = -Math.PI / 2;
     houseFloor.position.set(hx, 0.02, hz + 8);
     houseFloor.receiveShadow = true;
     houseGroup.add(houseFloor);
 
-    // House Ceiling
     const houseCeiling = new THREE.Mesh(new THREE.PlaneGeometry(12, 16), ceilingMat);
     houseCeiling.rotation.x = Math.PI / 2;
     houseCeiling.position.set(hx, WALL_HEIGHT, hz + 8);
     houseGroup.add(houseCeiling);
 
-    // Front Façade Wall with Doorway Opening
     const frontWallL = new THREE.Mesh(new THREE.BoxGeometry(4.6, WALL_HEIGHT, 0.3), houseWallMat);
     frontWallL.position.set(hx - 3.7, WALL_HEIGHT / 2, hz);
     const frontWallR = new THREE.Mesh(new THREE.BoxGeometry(4.6, WALL_HEIGHT, 0.3), houseWallMat);
@@ -524,7 +664,6 @@ function buildCozyEndingHouse(hx, hz) {
     porchLight.position.set(hx, 3.2, hz - 0.5);
     houseGroup.add(porchLight);
 
-    // Back Wall with GIANT Living Room Glass Window Frame (Directly ahead facing sofa!)
     const backWallL = new THREE.Mesh(new THREE.BoxGeometry(3.6, WALL_HEIGHT, 0.3), houseWallMat);
     backWallL.position.set(hx - 4.2, WALL_HEIGHT / 2, hz + 16);
     const backWallR = new THREE.Mesh(new THREE.BoxGeometry(3.6, WALL_HEIGHT, 0.3), houseWallMat);
@@ -535,7 +674,6 @@ function buildCozyEndingHouse(hx, hz) {
     backWallBottom.position.set(hx, 0.4, hz + 16);
     houseGroup.add(backWallL, backWallR, backWallTop, backWallBottom);
 
-    // Giant Glass Window Pane (4.8m wide x 2.7m tall!)
     const windowPane = new THREE.Mesh(
         new THREE.PlaneGeometry(4.8, 2.7),
         new THREE.MeshStandardMaterial({ color: 0x88ccff, transparent: true, opacity: 0.3, roughness: 0.05, metalness: 0.95 })
@@ -543,14 +681,12 @@ function buildCozyEndingHouse(hx, hz) {
     windowPane.position.set(hx, 2.15, hz + 16.01);
     houseGroup.add(windowPane);
 
-    // Side Walls
     const leftWall = new THREE.Mesh(new THREE.BoxGeometry(0.3, WALL_HEIGHT, 16), houseWallMat);
     leftWall.position.set(hx - 6, WALL_HEIGHT / 2, hz + 8);
     const rightWall = new THREE.Mesh(new THREE.BoxGeometry(0.3, WALL_HEIGHT, 16), houseWallMat);
     rightWall.position.set(hx + 6, WALL_HEIGHT / 2, hz + 8);
     houseGroup.add(leftWall, rightWall);
 
-    // Plush Red Living Room Sofa (Facing BACK WINDOW directly!)
     const sofaGroup = new THREE.Group();
     const sofaMat = new THREE.MeshStandardMaterial({ color: 0x8b1a1a, roughness: 0.5 });
     const seat = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.5, 1.2), sofaMat);
@@ -563,12 +699,10 @@ function buildCozyEndingHouse(hx, hz) {
     sofaGroup.position.set(hx, 0, hz + 6.0);
     houseGroup.add(sofaGroup);
 
-    // Warm Ceiling Light
     const warmLamp = new THREE.PointLight(0xffaa44, 4.5, 16);
     warmLamp.position.set(hx - 3.5, 2.5, hz + 6.0);
     houseGroup.add(warmLamp);
 
-    // Coffee Table in front of sofa
     const tableMat = new THREE.MeshStandardMaterial({ color: 0x2b1a0e, roughness: 0.5 });
     const table = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.4, 1.0), tableMat);
     table.position.set(hx, 0.2, hz + 8.5);
@@ -776,10 +910,12 @@ function initEventListeners() {
 }
 
 function requestPointerLock() {
+    if (isMobile) return;
     try { renderer.domElement.requestPointerLock(); } catch (e) {}
 }
 
 function onPointerLockChange() {
+    if (isMobile) return;
     isPointerLocked = (document.pointerLockElement === renderer.domElement);
     if (!isPointerLocked && currentState === GAME_STATE.PLAYING) {
         pauseGame();
@@ -840,7 +976,7 @@ function toggleFlashlight() {
 }
 
 function onMouseMove(e) {
-    if (currentState === GAME_STATE.DYING || currentState === GAME_STATE.VICTORY_CINEMATIC || !isPointerLocked) return;
+    if (isMobile || currentState === GAME_STATE.DYING || currentState === GAME_STATE.VICTORY_CINEMATIC || !isPointerLocked) return;
 
     const sensitivity = 0.0022;
 
@@ -870,6 +1006,14 @@ function startGame() {
         hudEl.style.display = 'flex';
     }
 
+    if (isMobile) {
+        const touchControlsEl = document.getElementById('touch-controls');
+        if (touchControlsEl) {
+            touchControlsEl.classList.remove('hidden');
+            touchControlsEl.style.display = 'block';
+        }
+    }
+
     const bloodVignetteEl = document.getElementById('blood-vignette');
     if (bloodVignetteEl) {
         bloodVignetteEl.classList.add('hidden');
@@ -887,9 +1031,11 @@ function startGame() {
 
     startTime = Date.now();
     
-    try {
-        renderer.domElement.requestPointerLock();
-    } catch(e) {}
+    if (!isMobile) {
+        try {
+            renderer.domElement.requestPointerLock();
+        } catch(e) {}
+    }
 
     try {
         if (clock) clock.start();
@@ -902,7 +1048,7 @@ function startGame() {
 function pauseGame() {
     if (currentState !== GAME_STATE.PLAYING) return;
     currentState = GAME_STATE.PAUSED;
-    document.exitPointerLock();
+    if (!isMobile) document.exitPointerLock();
     const pauseMenuEl = document.getElementById('pause-menu');
     if (pauseMenuEl) {
         pauseMenuEl.classList.remove('hidden');
@@ -917,7 +1063,7 @@ function resumeGame() {
         pauseMenuEl.classList.add('hidden');
         pauseMenuEl.style.display = 'none';
     }
-    requestPointerLock();
+    if (!isMobile) requestPointerLock();
 }
 
 function hideAllScreens() {
@@ -987,7 +1133,7 @@ function updateDeathSequence(delta) {
 function startVictoryCinematic() {
     currentState = GAME_STATE.VICTORY_CINEMATIC;
     cinematicTimer = 0;
-    document.exitPointerLock();
+    if (!isMobile) document.exitPointerLock();
     const hudEl = document.getElementById('hud');
     if (hudEl) {
         hudEl.classList.add('hidden');
@@ -1044,7 +1190,7 @@ function updateVictoryCinematic(delta) {
 
 function triggerGameOver() {
     currentState = GAME_STATE.GAMEOVER;
-    document.exitPointerLock();
+    if (!isMobile) document.exitPointerLock();
     const hudEl = document.getElementById('hud');
     if (hudEl) {
         hudEl.classList.add('hidden');
@@ -1059,7 +1205,7 @@ function triggerGameOver() {
 
 function triggerVictory() {
     currentState = GAME_STATE.VICTORY;
-    document.exitPointerLock();
+    if (!isMobile) document.exitPointerLock();
     const hudEl = document.getElementById('hud');
     if (hudEl) {
         hudEl.classList.add('hidden');
