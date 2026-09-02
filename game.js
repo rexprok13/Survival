@@ -1,6 +1,6 @@
 /**
  * THE DARK LABYRINTH - 3D Horror Survival Game
- * Cross-Platform Engine with Desktop & Mobile/Tablet Virtual Touch Controls
+ * Visible Chest Impale, Lift Up, Neck Snap & Rapid Drop Execution Cinematic
  */
 
 // Global State & Settings
@@ -67,11 +67,13 @@ let joystickCenter = { x: 0, y: 0 };
 let lookTouchId = null;
 let lastLookPos = { x: 0, y: 0 };
 
-// Monster AI Properties with Dynamic BFS Pathfinding
+// Monster AI Properties with Dynamic BFS Pathfinding & Independent Claws
 const monsterAI = {
     mesh: null,
     leftClawsGroup: null,
     rightClawsGroup: null,
+    leftClaws: [],
+    rightClaws: [],
     position: new THREE.Vector3(),
     state: 'PATROL',
     speed: 3.0,
@@ -186,7 +188,7 @@ function initMinimap() {
     }
 }
 
-/* ===== MOBILE / TABLET TOUCH CONTROLS (JOYSTICK, DRAG LOOK & BUTTONS) ===== */
+/* ===== MOBILE / TABLET TOUCH CONTROLS ===== */
 function initTouchControls() {
     const joystickContainer = document.getElementById('joystick-container');
     const joystickKnob = document.getElementById('joystick-knob');
@@ -233,7 +235,6 @@ function initTouchControls() {
         }
     });
 
-    // Touch Swipe-to-Turn Look Area (Right 2/3 of screen)
     window.addEventListener('touchstart', (e) => {
         if (currentState !== GAME_STATE.PLAYING) return;
         for (let i = 0; i < e.changedTouches.length; i++) {
@@ -248,7 +249,6 @@ function initTouchControls() {
         }
     }, { passive: false });
 
-    // Touch Action Buttons
     const sprintBtn = document.getElementById('touch-sprint-btn');
     if (sprintBtn) {
         sprintBtn.addEventListener('touchstart', (e) => {
@@ -797,7 +797,7 @@ function createFloatingKey(x, z) {
     keyObject = { mesh: group, x, z, collected: false, initialY: 1.4 };
 }
 
-/* ===== MONSTER WITH FLOATING LONG SHARP CLAWS (NO ARMS) ===== */
+/* ===== MONSTER WITH INDEPENDENT 3D FLOATING CLAWS ===== */
 function spawnMonster(x, z, pathNodes) {
     const group = new THREE.Group();
 
@@ -819,22 +819,26 @@ function spawnMonster(x, z, pathNodes) {
         metalness: 0.95,
         emissive: 0xaa0000
     });
-    const clawGeo = new THREE.ConeGeometry(0.05, 1.2, 8);
-    clawGeo.rotateX(Math.PI / 2);
 
     const leftClawsGroup = new THREE.Group();
     const rightClawsGroup = new THREE.Group();
+    const leftClawsList = [];
+    const rightClawsList = [];
 
     for (let i = 0; i < 4; i++) {
         const offset = (i - 1.5) * 0.12;
+        const clawGeo = new THREE.ConeGeometry(0.045, 1.2, 8);
+        clawGeo.rotateX(Math.PI / 2);
 
         const leftClaw = new THREE.Mesh(clawGeo, clawMat);
         leftClaw.position.set(offset, 0, 0);
         leftClawsGroup.add(leftClaw);
+        leftClawsList.push(leftClaw);
 
         const rightClaw = new THREE.Mesh(clawGeo, clawMat);
         rightClaw.position.set(offset, 0, 0);
         rightClawsGroup.add(rightClaw);
+        rightClawsList.push(rightClaw);
     }
 
     leftClawsGroup.position.set(-0.85, 1.8, 0.4);
@@ -862,6 +866,8 @@ function spawnMonster(x, z, pathNodes) {
     monsterAI.mesh = group;
     monsterAI.leftClawsGroup = leftClawsGroup;
     monsterAI.rightClawsGroup = rightClawsGroup;
+    monsterAI.leftClaws = leftClawsList;
+    monsterAI.rightClaws = rightClawsList;
     monsterAI.position.copy(group.position);
     monsterAI.eyesLight = redLight;
     monsterAI.patrolPath = pathNodes;
@@ -1018,6 +1024,8 @@ function startGame() {
     if (bloodVignetteEl) {
         bloodVignetteEl.classList.add('hidden');
         bloodVignetteEl.style.display = 'none';
+        bloodVignetteEl.style.background = 'radial-gradient(circle, transparent 40%, rgba(180, 0, 20, 0.75) 100%)';
+        bloodVignetteEl.style.opacity = '0';
     }
 
     const objectiveBannerEl = document.getElementById('objective-banner');
@@ -1077,15 +1085,21 @@ function hideAllScreens() {
     });
 }
 
-/* ===== KNOCKDOWN & NECK CLAW EXECUTION DEATH SEQUENCE ===== */
+/* ===== VISIBLE CHEST IMPALE, LIFT UP, NECK SNAP & RAPID DROP EXECUTION ===== */
 function startDeathSequence() {
     if (currentState === GAME_STATE.DYING) return;
     currentState = GAME_STATE.DYING;
     deathTimer = 0;
     deathPhase = 0;
-    if (ui.bloodVignette) {
-        ui.bloodVignette.classList.add('hidden');
-        ui.bloodVignette.style.display = 'none';
+
+    playMonsterScreech();
+
+    const bloodEl = document.getElementById('blood-vignette');
+    if (bloodEl) {
+        bloodEl.classList.remove('hidden');
+        bloodEl.style.display = 'block';
+        bloodEl.style.background = 'radial-gradient(circle, transparent 40%, rgba(180, 0, 20, 0.75) 100%)';
+        bloodEl.style.opacity = '0.9';
     }
 }
 
@@ -1094,39 +1108,107 @@ function updateDeathSequence(delta) {
 
     if (!monsterAI.mesh) return;
 
+    // Monster main body stays strictly GROUNDED on the floor (y = 0)
+    monsterAI.mesh.position.y = 0;
     const monsterHeadPos = monsterAI.mesh.position.clone().add(new THREE.Vector3(0, 2.7, 0));
 
-    if (deathTimer < 0.6) {
+    // Phase 0 (0.0s - 0.25s): RAPID KNOCKDOWN onto floor (face up looking at monster)
+    if (deathTimer < 0.25) {
         if (deathPhase === 0) {
             deathPhase = 1;
             playBodyThudSound();
         }
-        player.position.y = Math.max(0.35, player.position.y - delta * 4.5);
-    } else if (deathTimer < 2.2) {
-        const mTarget = player.position.clone().add(new THREE.Vector3(0, 0, -2.0));
-        monsterAI.mesh.position.lerp(mTarget, delta * 3.5);
+        player.position.y = Math.max(0.4, player.position.y - delta * 9.0);
+        const monsterTargetPos = player.position.clone().add(new THREE.Vector3(0, 0, -1.4));
+        monsterAI.mesh.position.lerp(monsterTargetPos, delta * 14.0);
         monsterAI.mesh.lookAt(player.position.x, 0.4, player.position.z);
-
-        if (monsterAI.rightClawsGroup) {
-            monsterAI.rightClawsGroup.position.set(0.85, 1.8, 0.4);
-        }
-    } else if (deathTimer < 3.6) {
-        if (monsterAI.rightClawsGroup) {
-            monsterAI.rightClawsGroup.position.z += delta * 4.8;
-            monsterAI.rightClawsGroup.position.x -= delta * 1.4;
-            monsterAI.rightClawsGroup.position.y -= delta * 2.8;
-        }
-        if (deathTimer > 2.25 && deathPhase === 1) {
+    }
+    // Phase 1 (0.25s - 1.0s): IMPALE CLAWS IN CHEST (In full view of camera!)
+    else if (deathTimer < 1.0) {
+        if (deathPhase === 1) {
             deathPhase = 2;
             playBodyThudSound();
+        }
+        if (monsterAI.rightClawsGroup) {
+            monsterAI.rightClawsGroup.position.set(0, 0.3, 0.75);
+            monsterAI.rightClawsGroup.rotation.x = Math.PI / 3.5;
+        }
+        if (monsterAI.leftClawsGroup) {
+            monsterAI.leftClawsGroup.position.set(-0.85, 1.8, 0.4);
+        }
+
+        monsterAI.rightClaws.forEach((claw, i) => {
+            claw.rotation.x = 0.6 + Math.sin(deathTimer * 12 + i) * 0.25;
+            claw.position.z = Math.cos(deathTimer * 10 + i) * 0.12;
+        });
+    }
+    // Phase 2 (1.0s - 2.2s): LIFT PLAYER UP BY CHEST CLAWS (Monster stays grounded)
+    else if (deathTimer < 2.2) {
+        if (deathPhase === 2) {
+            deathPhase = 3;
+            playImpactSound();
+        }
+        const liftProgress = (deathTimer - 1.0) / 1.2;
+        player.position.y = 0.4 + liftProgress * 2.0; // Rise to y = 2.4m
+
+        if (monsterAI.rightClawsGroup) {
+            monsterAI.rightClawsGroup.position.set(0, 0.3 + liftProgress * 2.0, 0.75);
+            monsterAI.rightClawsGroup.rotation.x = Math.PI / 6;
+        }
+
+        monsterAI.rightClaws.forEach((claw, i) => {
+            claw.rotation.x = 0.4 + Math.sin(deathTimer * 14 + i) * 0.25;
+        });
+    }
+    // Phase 3 (2.2s - 3.4s): SECONDARY LEFT HAND GRABS HEAD & TWISTS NECK BACKWARDS!
+    else if (deathTimer < 3.4) {
+        if (deathPhase === 3) {
+            deathPhase = 4;
+            playNeckSnapSound();
             playMonsterScreech();
         }
-    } else {
+
+        player.position.y = 2.4;
+
+        if (monsterAI.leftClawsGroup) {
+            monsterAI.leftClawsGroup.position.set(-0.15, 2.55, 0.25);
+            monsterAI.leftClawsGroup.rotation.x = -Math.PI / 3;
+        }
+
+        const snapProgress = (deathTimer - 2.2) / 1.2;
+        player.rotation.pitch = Math.PI / 2.2 * Math.min(1.0, snapProgress * 2.5);
+        player.rotation.roll = 0.75 * Math.min(1.0, snapProgress * 2.0);
+
+        monsterAI.leftClaws.forEach((claw, i) => {
+            claw.rotation.x = 0.8 + Math.sin(deathTimer * 16 + i) * 0.35;
+        });
+    }
+    // Phase 4 (3.4s - 4.0s): FAST DROP TO FLOOR & GAME OVER!
+    else if (deathTimer < 4.0) {
+        if (deathPhase === 4) {
+            deathPhase = 5;
+            playBodyThudSound();
+        }
+
+        const dropProgress = (deathTimer - 3.4) / 0.6;
+        player.position.y = Math.max(0.4, 2.4 - dropProgress * 3.5); // Rapid drop!
+
+        if (monsterAI.rightClawsGroup) monsterAI.rightClawsGroup.position.set(0.85, 1.8, 0.4);
+        if (monsterAI.leftClawsGroup) monsterAI.leftClawsGroup.position.set(-0.85, 1.8, 0.4);
+
+        const bloodEl = document.getElementById('blood-vignette');
+        if (bloodEl) bloodEl.style.opacity = `${0.9 + dropProgress * 0.1}`;
+    }
+    else {
         triggerGameOver();
     }
 
     camera.position.copy(player.position);
-    camera.lookAt(monsterHeadPos);
+    if (deathTimer < 2.2) {
+        camera.lookAt(monsterHeadPos);
+    } else {
+        updateCameraRotation();
+    }
 }
 
 /* ===== CINEMATIC: WALK YARD -> ENTER HOUSE -> SIT ON SOFA FACING GIANT WINDOW -> MONSTER WINDOW ===== */
@@ -1236,6 +1318,37 @@ function animate() {
     if (keyObject && !keyObject.collected) {
         keyObject.mesh.rotation.y += 0.03;
         keyObject.mesh.position.y = keyObject.initialY + Math.sin(elapsedTimeTotal * 3.0) * 0.25;
+    }
+
+    // Predatory floating claw movement while active/moving (INDEPENDENT FINGER ARTICULATION)
+    const time = elapsedTimeTotal * (monsterAI.state === 'CHASE' ? 9.0 : 5.0);
+
+    if (monsterAI.leftClawsGroup && currentState === GAME_STATE.PLAYING) {
+        monsterAI.leftClawsGroup.position.y = 1.8 + Math.sin(time) * 0.08;
+        monsterAI.leftClawsGroup.position.z = 0.4 + Math.cos(time * 0.8) * 0.06;
+        monsterAI.leftClawsGroup.rotation.z = Math.sin(time * 0.5) * 0.12;
+
+        monsterAI.leftClaws.forEach((claw, i) => {
+            const fingerTime = time * (1.1 + i * 0.2) + i * 1.3;
+            claw.position.z = Math.sin(fingerTime) * 0.08;
+            claw.position.y = Math.cos(fingerTime * 0.8) * 0.05;
+            claw.rotation.x = Math.sin(fingerTime * 1.2) * 0.25;
+            claw.rotation.y = Math.cos(fingerTime * 0.9) * 0.15;
+        });
+    }
+
+    if (monsterAI.rightClawsGroup && currentState === GAME_STATE.PLAYING) {
+        monsterAI.rightClawsGroup.position.y = 1.8 + Math.cos(time) * 0.08;
+        monsterAI.rightClawsGroup.position.z = 0.4 + Math.sin(time * 0.8) * 0.06;
+        monsterAI.rightClawsGroup.rotation.z = -Math.sin(time * 0.5) * 0.12;
+
+        monsterAI.rightClaws.forEach((claw, i) => {
+            const fingerTime = time * (1.1 + (3 - i) * 0.2) + i * 1.7;
+            claw.position.z = Math.cos(fingerTime) * 0.08;
+            claw.position.y = Math.sin(fingerTime * 0.8) * 0.05;
+            claw.rotation.x = Math.cos(fingerTime * 1.2) * 0.25;
+            claw.rotation.y = -Math.sin(fingerTime * 0.9) * 0.15;
+        });
     }
 
     if (currentState === GAME_STATE.DYING) {
@@ -1737,6 +1850,70 @@ function playBodyThudSound() {
         gain.connect(audioCtx.destination);
 
         noise.start();
+    } catch(e) {}
+}
+
+function playNeckSnapSound() {
+    if (!audioCtx) return;
+    try {
+        const bufferSize = Math.floor(audioCtx.sampleRate * 0.15);
+        const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let j = 0; j < bufferSize; j++) {
+            data[j] = (Math.random() * 2 - 1) * Math.exp(-j / (audioCtx.sampleRate * 0.015));
+        }
+
+        const noise = audioCtx.createBufferSource();
+        noise.buffer = buffer;
+
+        const filter = audioCtx.createBiquadFilter();
+        filter.type = 'highpass';
+        filter.frequency.setValueAtTime(1200, audioCtx.currentTime);
+
+        const gain = audioCtx.createGain();
+        gain.gain.setValueAtTime(1.0, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.12);
+
+        noise.connect(filter);
+        filter.connect(gain);
+        gain.connect(audioCtx.destination);
+
+        noise.start();
+    } catch(e) {}
+}
+
+function playDevourSound() {
+    if (!audioCtx) return;
+    try {
+        for (let i = 0; i < 5; i++) {
+            setTimeout(() => {
+                if (!audioCtx) return;
+                const bufferSize = Math.floor(audioCtx.sampleRate * 0.22);
+                const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let j = 0; j < bufferSize; j++) {
+                    data[j] = (Math.random() * 2 - 1) * Math.exp(-j / (audioCtx.sampleRate * 0.035));
+                }
+
+                const noise = audioCtx.createBufferSource();
+                noise.buffer = buffer;
+
+                const filter = audioCtx.createBiquadFilter();
+                filter.type = 'bandpass';
+                filter.frequency.setValueAtTime(250 + Math.random() * 450, audioCtx.currentTime);
+                filter.Q.setValueAtTime(3.5, audioCtx.currentTime);
+
+                const gain = audioCtx.createGain();
+                gain.gain.setValueAtTime(0.9, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.18);
+
+                noise.connect(filter);
+                filter.connect(gain);
+                gain.connect(audioCtx.destination);
+
+                noise.start();
+            }, i * 130);
+        }
     } catch(e) {}
 }
 
